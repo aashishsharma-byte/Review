@@ -1,0 +1,23 @@
+{
+  "name": "crisp-agent-review-dashboard",
+  "version": "1.0.0",
+  "description": "Dashboard that pulls support chats from Crisp and uses Claude to review agent performance, user satisfaction, knowledge-base usage and missing KB articles.",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "demo": "DEMO=1 node server.js",
+    "sync": "node src/cli-sync.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "UNLICENSED",
+  "private": true,
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.6.0",
+    "dotenv": "^18.0.9",
+    "express": "^5.3.0",
+    "zod": "^4.6.7"
+  }
+}
