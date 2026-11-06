@@ -40,6 +40,7 @@ Create a plugin in the [Crisp Marketplace](https://marketplace.crisp.chat/), gen
 Set `SYNC_INTERVAL_MINUTES` to sync automatically while the server runs, or call `npm run sync -- --days 1` from cron. Use `--reanalyze` to re-review chats already in the cache.
 
 ## Notes
-- Ratings come from Crisp's rating sessions endpoint; if your plan doesn't expose it the dashboard still works, just without user stars.
+- **User star ratings:** Crisp's REST API v1 has no route for per-conversation CSAT/star ratings (only Helpdesk article-helpfulness feedback exists). The dashboard runs fine without them — Claude still judges satisfaction from the transcript itself — but the "Negative ratings" tab and the user-rating columns will stay empty unless you have another source for them (e.g. a webhook that stores ratings from the chat widget's rating event, or Crisp support confirms a private route for your plan).
+- The knowledge base is read by walking Crisp's Helpdesk content tree (`/helpdesk/tree/list/...`), which is a nested folder structure — large knowledge bases (1000+ articles) take a little longer to index on first sync but are cached afterwards.
 - Set `DASHBOARD_PASSWORD` before exposing the dashboard: it shows customer chat content.
 - Cost: one Claude request per chat. The KB list is prompt-cached across a sync.

@@ -36,8 +36,8 @@ async function runSync({ days = 7, maxConversations = 200, concurrency = 3, rean
   Object.assign(syncStatus, { running: true, total: 0, done: 0, failed: 0, skipped: 0, message: "Connecting to Crisp…", startedAt: new Date().toISOString(), finishedAt: null });
 
   const crisp = new CrispClient({
-    identifier: process.env.CRISP_IDENTIFIER,
-    key: process.env.CRISP_KEY,
+    identifier: process.env.CRISP_IDENTIFIER || process.env.CRISP_API_IDENTIFIER,
+    key: process.env.CRISP_KEY || process.env.CRISP_API_KEY,
     websiteId: process.env.CRISP_WEBSITE_ID,
   });
   const store = loadStore();

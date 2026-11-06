@@ -77,61 +77,53 @@ export class CrispClient {
     return this.request(this.w(`/operators/list`));
   }
 
-  /** User ratings (stars 1-5 + optional comment) left at the end of conversations. */
-  async listRatings({ page = 1, dateStart, dateEnd } = {}) {
-    return this.request(this.w(`/rating/sessions/list/${page}`), {
-      filter_date_start: dateStart?.toISOString(),
-      filter_date_end: dateEnd?.toISOString(),
-    });
-  }
-
-  async listHelpdeskArticles(locale, page = 1) {
-    return this.request(this.w(`/helpdesk/locale/${locale}/articles/${page}`));
-  }
-
-  async getHelpdeskArticle(locale, articleId) {
-    return this.request(this.w(`/helpdesk/locale/${locale}/article/${articleId}`));
+  /** One page of a Helpdesk content tree directory (type: articles|guides|references|news). */
+  async listHelpdeskTree(locale, type, { page = 1, subPath } = {}) {
+    return this.request(this.w(`/helpdesk/tree/list/${locale}/${type}/${page}`), { sub_path: subPath });
   }
 }
 
-/** Fetch every published KB article title/description/url for a locale. */
-export async function fetchKnowledgeBase(crisp, locale, maxPages = 30) {
+/**
+ * Fetch every published article in a Helpdesk locale by recursively walking the content tree
+ * (Crisp's REST API has no flat "list articles" route - articles live in a folder tree:
+ * GET /helpdesk/tree/list/{locale}/{type}/{page}?sub_path=... returns {type:"file"|"directory", slug, title, state}).
+ */
+export async function fetchKnowledgeBase(crisp, locale, { type = "articles", maxArticles = 5000, maxDirs = 500 } = {}) {
   const articles = [];
-  for (let page = 1; page <= maxPages; page++) {
-    const batch = await crisp.listHelpdeskArticles(locale, page).catch(() => []);
-    if (!Array.isArray(batch) || batch.length === 0) break;
-    for (const a of batch) {
-      if (a.status && a.status !== "published") continue;
-      articles.push({
-        id: a.article_id,
-        title: a.title,
-        description: a.description || "",
-        url: a.url || "",
-        category: a.category?.name || "",
-      });
+  const base = `https://knowledgebase.xtenav.com/${locale}`;
+  let dirsVisited = 0;
+
+  async function walk(subPath, categoryTitle) {
+    if (dirsVisited++ > maxDirs || articles.length > maxArticles) return;
+    for (let page = 1; page <= 50; page++) {
+      const batch = await crisp.listHelpdeskTree(locale, type, { page, subPath }).catch(() => []);
+      if (!Array.isArray(batch) || batch.length === 0) break;
+      for (const entry of batch) {
+        const fullPath = subPath ? `${subPath}/${entry.slug}` : entry.slug;
+        if (entry.type === "directory") {
+          await walk(fullPath, categoryTitle || entry.title);
+        } else if (entry.type === "file" && entry.state?.published && !entry.state?.hidden) {
+          articles.push({
+            title: entry.title,
+            description: "",
+            url: `${base}/${fullPath.replace(/\.md$/, "")}`,
+            category: categoryTitle || "",
+          });
+        }
+      }
+      if (batch.length < 100) break;
     }
   }
+
+  await walk(undefined, "");
   return articles;
 }
 
-/** Ratings indexed by session_id. Tolerates workspaces/plans where the route is unavailable. */
-export async function fetchRatings(crisp, { dateStart, dateEnd, maxPages = 30 } = {}) {
-  const map = new Map();
-  for (let page = 1; page <= maxPages; page++) {
-    let batch;
-    try {
-      batch = await crisp.listRatings({ page, dateStart, dateEnd });
-    } catch (err) {
-      console.warn(`[crisp] ratings unavailable: ${err.message}`);
-      break;
-    }
-    if (!Array.isArray(batch) || batch.length === 0) break;
-    for (const r of batch) {
-      const sid = r.session_id;
-      const stars = r.stars ?? r.rating?.stars;
-      if (!sid || stars == null) continue;
-      map.set(sid, { stars, comment: r.comment ?? r.rating?.comment ?? "", at: r.created_at ?? r.updated_at });
-    }
-  }
-  return map;
+/**
+ * Crisp's REST API v1 does not expose per-conversation CSAT/star ratings (only Helpdesk
+ * article-helpfulness feedback exists: /helpdesk/feedback/*). There is no route to call here;
+ * this always returns an empty map so the dashboard runs without the "user rating" fields.
+ */
+export async function fetchRatings() {
+  return new Map();
 }
