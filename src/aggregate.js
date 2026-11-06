@@ -93,6 +93,10 @@ export function buildDashboard(store, { from, to, agentIds } = {}) {
     ratedChats: r.length,
     negativeRatings: r.filter((c) => isNegativeRating(c.userRating)).length,
     negativeOutcomes: reviewed.filter(isNegativeOutcome).length,
+    avgFirstResponseMinutes: avg(reviewed.map((c) => c.firstResponseMinutes).filter((v) => v != null)),
+    avgHandleMinutes: avg(reviewed.map((c) => c.durationMinutes).filter((v) => v != null)),
+    totalCostUsd: Math.round(reviewed.reduce((sum, c) => sum + (c.analysis.costUsd || 0), 0) * 100) / 100,
+    costPerChat: reviewed.length ? Math.round((reviewed.reduce((sum, c) => sum + (c.analysis.costUsd || 0), 0) / reviewed.length) * 10000) / 10000 : null,
   };
 
   const conversations = reviewed
@@ -111,6 +115,9 @@ export function buildDashboard(store, { from, to, agentIds } = {}) {
       resolved: c.analysis.query_resolved,
       needsReview: c.analysis.needs_manager_review,
       missedKb: c.analysis.kb.missed_article,
+      firstResponseMinutes: c.firstResponseMinutes,
+      handleMinutes: c.durationMinutes,
+      costUsd: c.analysis.costUsd ?? null,
     }))
     .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
 
@@ -171,6 +178,36 @@ export function buildDashboard(store, { from, to, agentIds } = {}) {
   const mostNegative = [...agentRows].filter((a) => a.negativeOutcomes > 0).sort((a, b) => b.negativeOutcomes - a.negativeOutcomes).slice(0, 10);
   const lowestScoring = [...agentRows].filter((a) => a.chats >= 2).sort((a, b) => (a.scores.overall ?? 10) - (b.scores.overall ?? 10)).slice(0, 10);
 
+  // Customers at risk: people who came back more than once and keep hitting trouble. This is the
+  // retention signal a founder actually wants - an agent's average score can look fine while one
+  // account quietly churns.
+  const customers = new Map();
+  for (const c of reviewed) {
+    const key = (c.user.email || c.user.name || c.sessionId).toLowerCase();
+    if (!customers.has(key)) customers.set(key, { name: c.user.name, email: c.user.email, chats: [] });
+    customers.get(key).chats.push(c);
+  }
+  const customersAtRisk = [...customers.values()]
+    .map((cu) => {
+      const troubled = cu.chats.filter((c) => c.analysis.needs_manager_review || isNegativeOutcome(c));
+      const agentsSeen = [...new Set(cu.chats.map((c) => c.agent.name))];
+      const last = cu.chats.reduce((a, b) => ((a.updatedAt || 0) > (b.updatedAt || 0) ? a : b));
+      return {
+        name: cu.name,
+        email: cu.email,
+        chats: cu.chats.length,
+        troubled: troubled.length,
+        avgScore: avg(cu.chats.map((c) => c.analysis.scores.overall)),
+        agents: agentsSeen,
+        lastContactAt: last.updatedAt,
+        lastQuery: last.analysis.user_query,
+        lastSessionId: last.sessionId,
+      };
+    })
+    .filter((cu) => cu.chats >= 2 && cu.troubled >= 1)
+    .sort((a, b) => b.troubled - a.troubled || (b.lastContactAt || 0) - (a.lastContactAt || 0))
+    .slice(0, 10);
+
   return {
     lastSync: store.lastSync,
     knowledgeBaseSize: (store.knowledgeBase || []).length,
@@ -182,6 +219,6 @@ export function buildDashboard(store, { from, to, agentIds } = {}) {
     suggestedArticles,
     categories: Object.entries(categories).sort((a, b) => b[1] - a[1]).slice(0, 12),
     trend,
-    leaderboards: { mostFlagged, mostNegative, lowestScoring },
+    leaderboards: { mostFlagged, mostNegative, lowestScoring, customersAtRisk },
   };
 }

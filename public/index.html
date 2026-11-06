@@ -61,6 +61,8 @@
 
   <main>
     <section id="tab-overview" class="tab active">
+      <div class="card exec" id="exec-summary"></div>
+
       <div class="kpis" id="kpis"></div>
 
       <div class="grid2">
@@ -87,6 +89,10 @@
           <h2>⬇️ Lowest average score</h2>
           <div class="leaderboard" id="lb-lowest"></div>
         </div>
+        <div class="card">
+          <h2>⚠️ Customers at risk <span class="muted">(repeat trouble)</span></h2>
+          <div class="leaderboard" id="lb-customers"></div>
+        </div>
       </div>
 
       <div class="card">
@@ -103,17 +109,26 @@
     </section>
 
     <section id="tab-review" class="tab">
-      <p class="muted">Chats where the user wasn't satisfied, the query wasn't handled, knowledge wasn't transferred, or a relevant KB article was missed. Open one to see the recommended rating and the reply the agent should have sent.</p>
+      <div class="item-head" style="margin-bottom:8px">
+        <p class="muted" style="margin:0">Chats where the user wasn't satisfied, the query wasn't handled, knowledge wasn't transferred, or a relevant KB article was missed. Open one to see the recommended rating and the reply the agent should have sent.</p>
+        <button id="export-review">⬇ Export CSV</button>
+      </div>
       <div id="review-list" class="list"></div>
     </section>
 
     <section id="tab-negative" class="tab">
-      <p class="muted">Chats the user rated 1–2★ (when Crisp provides a rating) or that Claude judged the user left unsatisfied, grouped by agent.</p>
+      <div class="item-head" style="margin-bottom:8px">
+        <p class="muted" style="margin:0">Chats the user rated 1–2★ (when Crisp provides a rating) or that Claude judged the user left unsatisfied, grouped by agent.</p>
+        <button id="export-negative">⬇ Export CSV</button>
+      </div>
       <div id="negative-list"></div>
     </section>
 
     <section id="tab-conversations" class="tab">
-      <input id="search" type="search" placeholder="Search user, agent, query, topic…" />
+      <div class="item-head" style="margin-bottom:8px">
+        <input id="search" type="search" placeholder="Search user, agent, query, topic…" />
+        <button id="export-conv">⬇ Export CSV</button>
+      </div>
       <div class="table-wrap"><table id="conv-table"></table></div>
     </section>
 

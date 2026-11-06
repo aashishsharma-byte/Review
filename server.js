@@ -34,7 +34,20 @@ app.get("/api/dashboard", (req, res) => {
     fromDate = new Date(Date.now() - Number(days) * 86400_000);
   }
   const agentIds = agents ? String(agents).split(",").filter(Boolean) : undefined;
-  res.json({ demo: DEMO, ...buildDashboard(getStore(), { from: fromDate, to: toDate, agentIds }) });
+  const store = getStore();
+  const dashboard = buildDashboard(store, { from: fromDate, to: toDate, agentIds });
+
+  // Period-over-period: same-length window immediately before `from`, for the trend arrows on
+  // the Overview exec summary. Skipped for "all time" (fromDate unset) - there's no "before" that.
+  let previous = null;
+  if (fromDate) {
+    const windowMs = (toDate ? toDate.getTime() : Date.now()) - fromDate.getTime();
+    const prevTo = new Date(fromDate.getTime() - 1);
+    const prevFrom = new Date(prevTo.getTime() - windowMs);
+    previous = buildDashboard(store, { from: prevFrom, to: prevTo, agentIds }).summary;
+  }
+
+  res.json({ demo: DEMO, ...dashboard, previous });
 });
 
 app.get("/api/conversations/:sid", (req, res) => {

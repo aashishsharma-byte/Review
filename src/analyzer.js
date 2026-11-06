@@ -101,6 +101,25 @@ function kbList(articles) {
 
 const clamp = (n) => Math.max(0, Math.min(10, Math.round(Number(n) || 0)));
 
+// Pricing per million tokens, for the "what is this costing us" cost tracker. Override via env
+// for a different model. Cache reads/writes are priced separately from fresh input tokens.
+const PRICE_PER_MTOK = {
+  input: Number(process.env.CLAUDE_PRICE_INPUT || 4),
+  output: Number(process.env.CLAUDE_PRICE_OUTPUT || 20),
+  cacheRead: Number(process.env.CLAUDE_PRICE_CACHE_READ || 0.4),
+  cacheWrite: Number(process.env.CLAUDE_PRICE_CACHE_WRITE || 5),
+};
+function costUsd(usage) {
+  if (!usage) return 0;
+  const m = 1_000_000;
+  return (
+    (usage.input_tokens || 0) * (PRICE_PER_MTOK.input / m) +
+    (usage.output_tokens || 0) * (PRICE_PER_MTOK.output / m) +
+    (usage.cache_read_input_tokens || 0) * (PRICE_PER_MTOK.cacheRead / m) +
+    (usage.cache_creation_input_tokens || 0) * (PRICE_PER_MTOK.cacheWrite / m)
+  );
+}
+
 /**
  * @param {{transcript: string, agentName: string, userRating?: {stars:number, comment:string}, articles: any[]}} input
  */
@@ -145,5 +164,10 @@ export async function analyzeConversation({ transcript, agentName, userRating, a
     out.needs_manager_review = true;
   }
   if (userRating && userRating.stars <= 2) out.needs_manager_review = true;
-  return { ...out, model: response.model };
+  return {
+    ...out,
+    model: response.model,
+    usage: response.usage,
+    costUsd: Math.round(costUsd(response.usage) * 100000) / 100000,
+  };
 }

@@ -25,7 +25,7 @@ const noSuggestion = { needed: false, user_question: "", what_user_wants: "", su
 
 const rows = [
   {
-    sid: "demo-1", hoursAgo: 3, agent: agents.priya, user: "Alex Morgan", rating: { stars: 5, comment: "Super quick, thanks!" },
+    sid: "demo-1", hoursAgo: 3, agent: agents.priya, user: "Alex Morgan", email: "alex.morgan@acme-av.com", respMin: 2, durMin: 6, rating: { stars: 5, comment: "Super quick, thanks!" },
     transcript: "USER: How do I connect QuickBooks?\nAGENT Priya: Go to Settings > Integrations > QuickBooks and click Connect. Here is the guide: https://example.com/kb/quickbooks\nUSER: Done, it works. Thanks!",
     a: {
       user_query: "How to connect the QuickBooks integration", query_category: "Integrations - QuickBooks",
@@ -39,7 +39,7 @@ const rows = [
     },
   },
   {
-    sid: "demo-2", hoursAgo: 6, agent: agents.rahul, user: "Jordan Lee", rating: { stars: 1, comment: "Didn't answer my question" },
+    sid: "demo-2", hoursAgo: 6, agent: agents.rahul, user: "Jordan Lee", email: "jordan.lee@brightview-systems.com", respMin: 14, durMin: 22, rating: { stars: 1, comment: "Didn't answer my question" },
     transcript: "USER: My proposal PDF cuts off the terms section, how do I fix it?\nAGENT Rahul: Please try again later.\nUSER: That doesn't help.\nAGENT Rahul: Is there anything else I can help you with?",
     a: {
       user_query: "Proposal PDF truncates the Terms & Conditions section", query_category: "Proposals - PDF export",
@@ -58,7 +58,7 @@ const rows = [
     },
   },
   {
-    sid: "demo-3", hoursAgo: 12, agent: agents.sam, user: "Taylor Kim", rating: null,
+    sid: "demo-3", hoursAgo: 12, agent: agents.sam, user: "Taylor Kim", email: "taylor.kim@kim-integrations.com", respMin: 4, durMin: 9, rating: null,
     transcript: "USER: Can I add speakers and see their coverage?\nAGENT Sam: Yes, use the Floor Plan feature, place speakers from the library and enable coverage view.\nUSER: ok where is coverage view\nAGENT Sam: In the right panel.",
     a: {
       user_query: "How to visualise speaker coverage on a floor plan", query_category: "Design - Floor Plan",
@@ -77,7 +77,7 @@ const rows = [
     },
   },
   {
-    sid: "demo-4", hoursAgo: 20, agent: agents.priya, user: "Casey Rivera", rating: { stars: 2, comment: "Took too long" },
+    sid: "demo-4", hoursAgo: 20, agent: agents.priya, user: "Casey Rivera", email: "casey.rivera@riveratech.com", respMin: 19, durMin: 31, rating: { stars: 2, comment: "Took too long" },
     transcript: "USER: Pricing in my library is wrong\nAGENT Priya: Could you share your registered email?\nUSER: casey@example.com\nAGENT Priya: Thanks, our team will look into this and update you.",
     a: {
       user_query: "Product prices in My Library are incorrect", query_category: "Library - Pricing",
@@ -96,7 +96,7 @@ const rows = [
     },
   },
   {
-    sid: "demo-5", hoursAgo: 30, agent: agents.rahul, user: "Morgan Patel", rating: { stars: 4, comment: "" },
+    sid: "demo-5", hoursAgo: 30, agent: agents.rahul, user: "Morgan Patel", email: "morgan.patel@patel-av.com", respMin: 3, durMin: 7, rating: { stars: 4, comment: "" },
     transcript: "USER: Can I export my BOM to Excel?\nAGENT Rahul: Yes — open the BOM, click Export > Excel. Columns follow your current view.\nUSER: great, thanks",
     a: {
       user_query: "Export a bill of materials to Excel", query_category: "BOM - Export",
@@ -110,7 +110,7 @@ const rows = [
     },
   },
   {
-    sid: "demo-6", hoursAgo: 40, agent: agents.sam, user: "Riley Chen", rating: { stars: 1, comment: "Agent didn't understand" },
+    sid: "demo-6", hoursAgo: 40, agent: agents.sam, user: "Riley Chen", email: "riley.chen@chen-solutions.com", respMin: 11, durMin: 18, rating: { stars: 1, comment: "Agent didn't understand" },
     transcript: "USER: I need to send invoices to my accountant's email, not mine\nAGENT Sam: You can download invoices from Billing.\nUSER: I asked about sending them to another email\nAGENT Sam: Please check Billing.",
     a: {
       user_query: "Send subscription invoices to a different email address", query_category: "Billing - Invoices",
@@ -128,6 +128,28 @@ const rows = [
       suggested_article: { needed: true, user_question: "Can invoices be sent to my accountant's email?", what_user_wants: "The user wants billing invoices delivered automatically to someone other than the account owner (e.g. an accountant). An article should state who receives invoices, how to download them, and current workarounds.", suggested_title: "Who receives invoices and how to send them to your accountant" },
     },
   },
+  {
+    // Same customer as demo-2, contacting again - this is what the "Customers at risk" leaderboard is for.
+    sid: "demo-7", hoursAgo: 2, agent: agents.sam, user: "Jordan Lee", email: "jordan.lee@brightview-systems.com", respMin: 9, durMin: 15, rating: { stars: 2, comment: "Still not fixed" },
+    transcript: "USER: The Terms section is STILL cut off in my PDF, this is the second time I'm asking\nAGENT Sam: Let me check that for you.\nUSER: It's been 6 hours\nAGENT Sam: I've escalated it again, sorry for the delay.",
+    a: {
+      user_query: "Proposal PDF Terms & Conditions section is still cut off, reported previously and not fixed",
+      query_category: "Proposals - PDF export",
+      summary: "Second contact from the same customer about an unresolved issue first raised the day before; still no fix or workaround offered.",
+      scores: scores(3, 3, 2, 5, 3, 4, 2, 2, 2), user_satisfied: false, query_resolved: false, knowledge_transferred: false,
+      satisfaction_evidence: '"this is the second time I\'m asking" and a 2-star rating',
+      kb: { relevant_articles: [{ title: "Customise proposal templates", url: "https://example.com/kb/proposal-templates" }], agent_shared_article: false, missed_article: true },
+      strengths: ["Acknowledged the delay"],
+      issues: ["No recognition this was a repeat, unresolved issue from the same customer", "No workaround offered while the bug is pending", "No ETA given a second time"],
+      needs_manager_review: true,
+      manager_review: {
+        recommended_rating: 3, verdict: "Repeat unresolved issue - should have been fast-tracked.",
+        what_went_wrong: "A second contact about the same open issue should be flagged as a priority bug, given a concrete ETA, and offered the manual workaround immediately rather than re-escalated with no update.",
+        ideal_reply: "Sorry, Jordan - I can see this is your second time reporting this and it's still not fixed, that's on us. I've flagged it as a priority bug with engineering (ref from your first chat). In the meantime, here's a workaround so you're not blocked: export the Terms as plain text first, then re-paste before exporting the proposal. I'll personally follow up with an update by end of day tomorrow.",
+      },
+      suggested_article: noSuggestion,
+    },
+  },
 ];
 
 export function demoStore() {
@@ -139,13 +161,15 @@ export function demoStore() {
       updatedAt: at,
       createdAt: at - H / 2,
       state: "resolved",
-      user: { name: r.user, email: "" },
+      user: { name: r.user, email: r.email || "" },
       agent: r.agent,
       userRating: r.rating ? { ...r.rating, at } : null,
       messageCount: r.transcript.split("\n").length,
       transcript: r.transcript,
       crispUrl: "#",
-      analysis: { language: "English", ...r.a, model: "demo" },
+      firstResponseMinutes: r.respMin ?? null,
+      durationMinutes: r.durMin ?? null,
+      analysis: { language: "English", ...r.a, model: "demo", costUsd: 0.018, usage: { input_tokens: 3400, output_tokens: 850 } },
       analyzedAt: new Date(at).toISOString(),
     };
   }

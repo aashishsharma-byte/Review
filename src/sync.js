@@ -5,6 +5,19 @@ import { loadStore, saveStore } from "./store.js";
 
 const isBot = (m) => m.automated || m.user?.type === "bot" || String(m.origin || "").startsWith("urn:");
 
+/** Minutes from the user's first message to the first human-agent reply, and to the last message overall. */
+function timingStats(messages) {
+  const firstUser = messages.find((m) => m.from === "user" && m.type === "text");
+  if (!firstUser) return { firstResponseMinutes: null, durationMinutes: null };
+  const firstAgent = messages.find((m) => m.from === "operator" && m.type !== "note" && !isBot(m) && m.timestamp > firstUser.timestamp);
+  const last = messages[messages.length - 1];
+  const round1 = (n) => Math.round(n * 10) / 10;
+  return {
+    firstResponseMinutes: firstAgent ? round1((firstAgent.timestamp - firstUser.timestamp) / 60000) : null,
+    durationMinutes: last ? round1((last.timestamp - firstUser.timestamp) / 60000) : null,
+  };
+}
+
 /** The human operator who wrote most of the agent replies in the chat. */
 export function pickAgent(messages) {
   const counts = new Map();
@@ -93,6 +106,7 @@ async function runSync({ days = 7, maxConversations = 200, concurrency = 3, rean
           messageCount: messages.length,
           transcript: formatTranscript(messages),
           crispUrl: `https://app.crisp.chat/website/${crisp.websiteId}/inbox/${sid}/`,
+          ...timingStats(messages),
         };
         if (!agent || userMsgs === 0) {
           // Nothing to grade: no human agent replied, or the visitor never wrote.

@@ -27,6 +27,19 @@ const yesNo = (b, yes = "Yes", no = "No") => `<span class="tag ${b ? "s-good" : 
 const pct = (v) => (v == null ? "–" : `${v}%`);
 const initials = (name) => (name || "?").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("");
 const avatarColor = (name) => PALETTE[[...String(name)].reduce((a, c) => a + c.charCodeAt(0), 0) % PALETTE.length];
+const money = (v) => (v == null ? "–" : v > 0 && v < 0.01 ? "<$0.01" : `$${v.toFixed(2)}`);
+const minutes = (v) => (v == null ? "–" : v < 60 ? `${Math.round(v)}m` : `${Math.floor(v / 60)}h ${Math.round(v % 60)}m`);
+
+/** Up/down badge comparing a current value to the previous-period value. */
+function delta(curr, prev, { higherIsBetter = true, isPct = false } = {}) {
+  if (curr == null || prev == null) return "";
+  const diff = Math.round((curr - prev) * 10) / 10;
+  const badge =
+    diff === 0
+      ? `<span class="delta flat">flat</span>`
+      : `<span class="delta ${(higherIsBetter ? diff > 0 : diff < 0) ? "up" : "down"}">${diff > 0 ? "▲" : "▼"} ${Math.abs(diff)}${isPct ? "%" : ""}</span>`;
+  return ` ${badge}`; // leading space so callers can inline it without worrying about empty-string spacing
+}
 
 function bars(scores) {
   return Object.keys(LABELS)
@@ -169,8 +182,8 @@ function donutChart(categories) {
 }
 
 // ---------------- Leaderboards ----------------
-function lbRow(i, name, meta, count) {
-  return `<div class="lb-row"><div class="rank">${i + 1}</div><div><div class="name">${esc(name)}</div><div class="meta">${meta}</div></div><div class="count">${count}</div></div>`;
+function lbRow(i, name, meta, count, sub) {
+  return `<div class="lb-row"><div class="rank">${i + 1}</div><div><div class="name">${esc(name)}${sub ? ` <span class="muted" style="font-weight:400">· ${esc(sub)}</span>` : ""}</div><div class="meta">${meta}</div></div><div class="count">${count}</div></div>`;
 }
 function renderLeaderboard(el, rows, build) {
   $(el).innerHTML = rows.length ? rows.map((a, i) => build(a, i)).join("") : '<p class="empty">Nothing to show 🎉</p>';
@@ -179,7 +192,21 @@ function renderLeaderboard(el, rows, build) {
 // ---------------- Render ----------------
 function render() {
   const s = data.summary;
+  const p = data.previous;
   $("#sync-info").innerHTML = `Last sync: <b>${data.lastSync ? when(data.lastSync) : "never"}</b> · <b>${data.knowledgeBaseSize}</b> KB articles indexed${data.demo ? " · <b>DEMO DATA</b>" : ""}`;
+
+  // Founder's-eye TL;DR: the one paragraph worth reading before the rest of the page.
+  const topRisk = data.leaderboards.customersAtRisk[0];
+  const topAgent = data.leaderboards.lowestScoring[0];
+  $("#exec-summary").innerHTML = s.reviewed
+    ? `👋 <b>${s.reviewed} chats</b> reviewed this period, team averaging <b>${s.scores.overall ?? "–"}/10</b>${p ? delta(s.scores.overall, p.scores.overall) : ""}.
+       <b>${pct(s.satisfiedPct)}</b> of users left satisfied${p ? delta(s.satisfiedPct, p.satisfiedPct, { isPct: true }) : ""},
+       median first response <b>${minutes(s.avgFirstResponseMinutes)}</b>.
+       <b>${s.needsReview}</b> chat${s.needsReview === 1 ? "" : "s"} need manager review${p ? delta(s.needsReview, p.needsReview, { higherIsBetter: false }) : ""}.
+       ${topRisk ? `Highest churn risk: <b>${esc(topRisk.name)}</b> (${topRisk.troubled} troubled chat${topRisk.troubled === 1 ? "" : "s"} of ${topRisk.chats}).` : "No repeat-trouble customers flagged."}
+       ${topAgent && topAgent.scores.overall < 6 ? `Agent needing the most coaching: <b>${esc(topAgent.name)}</b> (${topAgent.scores.overall}/10).` : ""}
+       This review run cost <b>${money(s.totalCostUsd)}</b> (${money(s.costPerChat)}/chat).`
+    : `No chats reviewed yet in this period. Click <b>Sync from Crisp</b>, or widen the date range.`;
 
   $("#kpis").innerHTML = [
     ["info", "💬", s.reviewed, "Chats reviewed"],
@@ -190,6 +217,10 @@ function render() {
     ["warn", "📚", s.missedKb, "Missed KB article"],
     ["bad", "😟", s.negativeOutcomes, "Negative / unsatisfied"],
     ["bad", "🚩", s.needsReview, "Need manager review"],
+    ["info", "⏱️", minutes(s.avgFirstResponseMinutes), "Avg first response"],
+    ["info", "🕐", minutes(s.avgHandleMinutes), "Avg chat duration"],
+    ["warn", "⚠️", data.leaderboards.customersAtRisk.length, "Customers at risk"],
+    ["good", "💰", money(s.totalCostUsd), `AI review cost (${money(s.costPerChat)}/chat)`],
   ]
     .map(([tone, icon, v, l]) => `<div class="kpi ${tone}"><span class="icon">${icon}</span><div class="v">${esc(v)}</div><div class="l">${l}</div></div>`)
     .join("");
@@ -205,6 +236,15 @@ function render() {
   );
   renderLeaderboard("#lb-lowest", data.leaderboards.lowestScoring, (a, i) =>
     lbRow(i, a.name, a.worstChat ? `worst: ${dateOnly(a.worstChat.updatedAt)} · "${esc((a.worstChat.query || "").slice(0, 44))}"` : "", `${a.scores.overall ?? "–"}/10`)
+  );
+  renderLeaderboard("#lb-customers", data.leaderboards.customersAtRisk, (cu, i) =>
+    lbRow(
+      i,
+      cu.name,
+      `last: ${dateOnly(cu.lastContactAt)} · talked to ${cu.agents.map(esc).join(", ")} · avg ${cu.avgScore ?? "–"}/10`,
+      `${cu.troubled}/${cu.chats}`,
+      cu.email
+    )
   );
 
   $("#team-scores").innerHTML = s.reviewed ? bars(s.scores) : '<p class="empty">No reviewed chats yet. Click "Sync from Crisp".</p>';
@@ -396,6 +436,59 @@ async function pollSync() {
   btn.disabled = false;
   await load();
 }
+
+// ---------------- CSV export ----------------
+function toCsv(rows, columns) {
+  const esc2 = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const head = columns.map(([, label]) => esc2(label)).join(",");
+  const body = rows.map((r) => columns.map(([key]) => esc2(typeof key === "function" ? key(r) : r[key])).join(",")).join("\n");
+  return `${head}\n${body}`;
+}
+function downloadCsv(filename, csv) {
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+const CONV_COLUMNS = [
+  [(c) => when(c.updatedAt), "When"],
+  [(c) => c.agent.name, "Agent"],
+  [(c) => c.user.name, "User"],
+  [(c) => c.user.email || "", "Email"],
+  [(c) => c.query, "Query"],
+  [(c) => c.category, "Category"],
+  [(c) => c.overall, "AI score"],
+  [(c) => (c.userRating ? c.userRating.stars : ""), "User stars"],
+  [(c) => (c.satisfied ? "Yes" : "No"), "Satisfied"],
+  [(c) => (c.resolved ? "Yes" : "No"), "Resolved"],
+  [(c) => (c.needsReview ? "Yes" : "No"), "Needs review"],
+  [(c) => c.sessionId, "Session ID"],
+];
+
+$("#export-review").addEventListener("click", () => downloadCsv("manager-review.csv", toCsv(data.conversations.filter((c) => c.needsReview), CONV_COLUMNS)));
+$("#export-negative").addEventListener("click", () =>
+  downloadCsv(
+    "negative-unsatisfied.csv",
+    toCsv(data.negativeRatings, [
+      [(c) => when(c.updatedAt), "When"],
+      [(c) => c.agent.name, "Agent"],
+      [(c) => c.user.name, "User"],
+      [(c) => (c.stars ?? ""), "Stars"],
+      [(c) => c.comment, "Comment"],
+      [(c) => c.query, "Query"],
+      [(c) => c.aiOverall, "AI score"],
+      [(c) => c.recommendedRating, "Recommended rating"],
+      [(c) => c.sessionId, "Session ID"],
+    ])
+  )
+);
+$("#export-conv").addEventListener("click", () => {
+  const q = $("#search").value.toLowerCase();
+  const rows = data.conversations.filter((c) => !q || [c.user.name, c.agent.name, c.query, c.category].join(" ").toLowerCase().includes(q));
+  downloadCsv("conversations.csv", toCsv(rows, CONV_COLUMNS));
+});
 
 load();
 fetch("/api/sync/status").then((r) => r.json()).then((st) => st.running && pollSync());

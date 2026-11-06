@@ -136,6 +136,12 @@ main { padding: 20px 24px 48px; max-width: 1480px; margin: 0 auto; }
 
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; margin-bottom: 18px; box-shadow: var(--shadow); }
 .card.flush { padding: 0; overflow: hidden; }
+.card.exec { background: linear-gradient(120deg, var(--surface) 60%, var(--surface-2)); border-left: 4px solid var(--brand); font-size: 14.5px; line-height: 1.7; }
+.card.exec b { color: var(--text); }
+.delta { font-weight: 700; font-variant-numeric: tabular-nums; padding: 1px 6px; border-radius: 6px; font-size: 12px; margin-left: 2px; }
+.delta.up { background: var(--good-bg); color: var(--good); }
+.delta.down { background: var(--bad-bg); color: var(--bad); }
+.delta.flat { background: var(--track); color: var(--muted); }
 .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 18px; }
 .grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; }
 
