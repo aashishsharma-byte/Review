@@ -12,29 +12,53 @@ export const SCORE_KEYS = [
   "kb_usage",
 ];
 
+const DAY = 86400_000;
 const avg = (xs) => (xs.length ? Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 10) / 10 : null);
 const pct = (n, d) => (d ? Math.round((n / d) * 100) : null);
+const dayKey = (t) => new Date(t).toISOString().slice(0, 10);
 
 export const isNegativeRating = (r) => r && r.stars <= 2;
+/** A chat counts as a "negative outcome" whether or not Crisp exposes a star rating for it. */
+const isNegativeOutcome = (c) => isNegativeRating(c.userRating) || !c.analysis.user_satisfied;
 
-export function buildDashboard(store, { days, agentId } = {}) {
-  const since = days ? Date.now() - days * 86400_000 : 0;
-  const all = Object.values(store.conversations || {}).filter((c) => (c.updatedAt || c.createdAt || 0) >= since);
-  const reviewed = all.filter((c) => c.analysis && (!agentId || c.agent?.id === agentId));
+/**
+ * @param {{from?: Date, to?: Date, agentIds?: string[]}} opts
+ *   from/to bound the window (inclusive); agentIds, if given, restricts to those agent ids.
+ */
+export function buildDashboard(store, { from, to, agentIds } = {}) {
+  const lo = from ? from.getTime() : 0;
+  const hi = to ? to.getTime() : Date.now() + DAY;
+  const agentFilter = agentIds && agentIds.length ? new Set(agentIds) : null;
+
+  const inWindow = (c) => {
+    const t = c.updatedAt || c.createdAt || 0;
+    return t >= lo && t <= hi;
+  };
+  const all = Object.values(store.conversations || {}).filter(inWindow);
+  const reviewed = all.filter((c) => c.analysis && (!agentFilter || agentFilter.has(c.agent?.id)));
 
   const scoreAvg = (list) => Object.fromEntries(SCORE_KEYS.map((k) => [k, avg(list.map((c) => c.analysis.scores[k]))]));
   const rated = (list) => list.filter((c) => c.userRating);
 
-  const agents = new Map();
-  for (const c of all.filter((c) => c.analysis)) {
-    const key = c.agent.id;
-    if (!agents.has(key)) agents.set(key, { id: key, name: c.agent.name, chats: [] });
-    agents.get(key).chats.push(c);
+  // Every agent seen in the whole store (not just this window) so the filter dropdown is stable.
+  const allAgentsEver = new Map();
+  for (const c of Object.values(store.conversations || {})) {
+    if (!c.analysis || !c.agent) continue;
+    if (!allAgentsEver.has(c.agent.id)) allAgentsEver.set(c.agent.id, c.agent.name);
   }
 
-  const agentRows = [...agents.values()]
+  const agentsInWindow = new Map();
+  for (const c of all.filter((c) => c.analysis)) {
+    const key = c.agent.id;
+    if (!agentsInWindow.has(key)) agentsInWindow.set(key, { id: key, name: c.agent.name, chats: [] });
+    agentsInWindow.get(key).chats.push(c);
+  }
+
+  const agentRows = [...agentsInWindow.values()]
     .map((a) => {
       const r = rated(a.chats);
+      const flagged = a.chats.filter((c) => c.analysis.needs_manager_review).sort((x, y) => (y.updatedAt || 0) - (x.updatedAt || 0));
+      const worst = [...a.chats].sort((x, y) => x.analysis.scores.overall - y.analysis.scores.overall)[0];
       return {
         id: a.id,
         name: a.name,
@@ -43,7 +67,10 @@ export function buildDashboard(store, { days, agentId } = {}) {
         satisfiedPct: pct(a.chats.filter((c) => c.analysis.user_satisfied).length, a.chats.length),
         resolvedPct: pct(a.chats.filter((c) => c.analysis.query_resolved).length, a.chats.length),
         missedKb: a.chats.filter((c) => c.analysis.kb.missed_article).length,
-        needsReview: a.chats.filter((c) => c.analysis.needs_manager_review).length,
+        needsReview: flagged.length,
+        lastFlaggedAt: flagged[0]?.updatedAt || null,
+        negativeOutcomes: a.chats.filter(isNegativeOutcome).length,
+        worstChat: worst ? { sessionId: worst.sessionId, overall: worst.analysis.scores.overall, updatedAt: worst.updatedAt, query: worst.analysis.user_query } : null,
         userStarsAvg: avg(r.map((c) => c.userRating.stars)),
         ratedChats: r.length,
         negativeRatings: r.filter((c) => isNegativeRating(c.userRating)).length,
@@ -65,6 +92,7 @@ export function buildDashboard(store, { days, agentId } = {}) {
     userStarsAvg: avg(r.map((c) => c.userRating.stars)),
     ratedChats: r.length,
     negativeRatings: r.filter((c) => isNegativeRating(c.userRating)).length,
+    negativeOutcomes: reviewed.filter(isNegativeOutcome).length,
   };
 
   const conversations = reviewed
@@ -87,14 +115,14 @@ export function buildDashboard(store, { days, agentId } = {}) {
     .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
 
   const negativeRatings = reviewed
-    .filter((c) => isNegativeRating(c.userRating))
+    .filter(isNegativeOutcome)
     .map((c) => ({
       sessionId: c.sessionId,
       updatedAt: c.updatedAt,
       agent: c.agent,
       user: c.user,
-      stars: c.userRating.stars,
-      comment: c.userRating.comment,
+      stars: c.userRating?.stars ?? null,
+      comment: c.userRating?.comment ?? "",
       query: c.analysis.user_query,
       aiOverall: c.analysis.scores.overall,
       recommendedRating: c.analysis.manager_review.recommended_rating,
@@ -121,14 +149,39 @@ export function buildDashboard(store, { days, agentId } = {}) {
   const categories = {};
   for (const c of reviewed) categories[c.analysis.query_category] = (categories[c.analysis.query_category] || 0) + 1;
 
+  // Per-day trend: chat volume + average score, for the Overview chart. Capped to the last 90 buckets.
+  const days = new Map();
+  for (const c of reviewed) {
+    const k = dayKey(c.updatedAt || c.createdAt);
+    if (!days.has(k)) days.set(k, []);
+    days.get(k).push(c);
+  }
+  const trend = [...days.entries()]
+    .sort(([a], [b]) => (a < b ? -1 : 1))
+    .slice(-90)
+    .map(([date, list]) => ({
+      date,
+      chats: list.length,
+      overall: avg(list.map((c) => c.analysis.scores.overall)),
+      flagged: list.filter((c) => c.analysis.needs_manager_review).length,
+    }));
+
+  // Leaderboards for the "who's doing worst, and when" requirement.
+  const mostFlagged = [...agentRows].filter((a) => a.needsReview > 0).sort((a, b) => b.needsReview - a.needsReview).slice(0, 10);
+  const mostNegative = [...agentRows].filter((a) => a.negativeOutcomes > 0).sort((a, b) => b.negativeOutcomes - a.negativeOutcomes).slice(0, 10);
+  const lowestScoring = [...agentRows].filter((a) => a.chats >= 2).sort((a, b) => (a.scores.overall ?? 10) - (b.scores.overall ?? 10)).slice(0, 10);
+
   return {
     lastSync: store.lastSync,
     knowledgeBaseSize: (store.knowledgeBase || []).length,
+    allAgents: [...allAgentsEver.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name)),
     summary,
     agents: agentRows,
     conversations,
     negativeRatings,
     suggestedArticles,
     categories: Object.entries(categories).sort((a, b) => b[1] - a[1]).slice(0, 12),
+    trend,
+    leaderboards: { mostFlagged, mostNegative, lowestScoring },
   };
 }

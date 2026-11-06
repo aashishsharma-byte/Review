@@ -25,8 +25,16 @@ if (PASSWORD) {
 const getStore = () => (DEMO ? demoStore() : loadStore());
 
 app.get("/api/dashboard", (req, res) => {
-  const days = req.query.days ? Number(req.query.days) : undefined;
-  res.json({ demo: DEMO, ...buildDashboard(getStore(), { days, agentId: req.query.agent || undefined }) });
+  const { from, to, days, agents } = req.query;
+  let fromDate, toDate;
+  if (from || to) {
+    if (from) fromDate = new Date(from);
+    if (to) toDate = new Date(new Date(to).getTime() + 86400_000 - 1); // inclusive end of day
+  } else if (days) {
+    fromDate = new Date(Date.now() - Number(days) * 86400_000);
+  }
+  const agentIds = agents ? String(agents).split(",").filter(Boolean) : undefined;
+  res.json({ demo: DEMO, ...buildDashboard(getStore(), { from: fromDate, to: toDate, agentIds }) });
 });
 
 app.get("/api/conversations/:sid", (req, res) => {
